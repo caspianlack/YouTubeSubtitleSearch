@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <img src="data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='60' height='60' rx='12' fill='%23ff4757'/%3E%3Cpath d='M15 20h30v5H15v-5zm0 10h25v5H15v-5zm0 10h20v5H15v-5z' fill='white'/%3E%3C/svg%3E" alt="Extension Logo">
+    
+    <h1>Integrated Search</h1>
+    <h1>for</h1>
+    <h1>YouTube Transcript</h1>
+    <br>
+    
+    <button id="openTranscriptBtn" class="primary-btn">Open Transcript</button>
+    <button id="downloadBtn" class="secondary-btn">Download Transcript</button>
+    
+    <div class="setting-row">
+      <label for="autoOpenToggle" class="setting-label">Auto-open transcript:</label>
+      <button id="autoOpenToggle" class="toggle-btn on">ON</button>
+    </div>
+    
+    <div id="status"></div>
+    
+    <div class="support-section">
+      <p class="support-text">Enjoying this extension?</p>
+      <button id="supportBtn" class="support-btn">
+        Buy me a coffee
+      </button>
+    </div>
+    
+    <button id="debugBtn" class="debug-btn">Show Debug Info</button>
+    <div id="debugInfo" style="display: none;"></div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

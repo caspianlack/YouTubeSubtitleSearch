@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Integrated Search for YouTube Transcript",
+  "version": "1.1",
+  "description": "Searching YouTube Videos transcriptions seemlessly with an integrated search that lets you skip through videos to the topic you want",
+  "icons": {
+    "128": "assets/logo.png"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": "assets/logo.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*"],
+      "js": ["content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "open-search": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Open transcript search"
+    }
+  },
+  "web_accessible_resources": [{
+    "resources": ["assets/*"],
+    "matches": ["https://www.youtube.com/*"]
+  }],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  }
+}
