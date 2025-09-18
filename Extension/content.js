@@ -2,6 +2,10 @@
 let currentVideoId = null;
 let autoOpenEnabled = true;
 
+// fuzzy word vars
+let maxFuzzyResults = 10;
+let showSimilarButton = null;
+
 // Load setting from storage when script starts
 async function loadAutoOpenSetting() {
   try {
@@ -158,6 +162,13 @@ if (document.readyState === 'loading') {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // new window needs to refresh tab before opening transcript search
+  if (request.action === "refreshPage") {
+    window.location.reload();
+    sendResponse({success: true});
+    return;
+  }
+
   if (request.action === "toggleAutoOpen") {
     autoOpenEnabled = request.enabled;
     //console.log("Auto-open transcript:", autoOpenEnabled ? "enabled" : "disabled");
@@ -318,7 +329,7 @@ function parseTimestamp(timestampStr) {
 // Open YouTube's transcript panel
 async function openTranscriptPanel() {
   //console.log("Attempting to open transcript panel...");
-  
+
   return new Promise((resolve, reject) => {
     let transcriptButton = document.querySelector('ytd-video-description-transcript-section-renderer button');
     
@@ -545,24 +556,17 @@ function performSearchLogic(query) {
 function performSearch(query) {
   if (!cachedTranscript) return;
 
-  // Clear highlights
   clearHighlights();
 
-  // First try exact matching
   let exactMatches = findExactMatches(query);
-  
-  // If no exact matches and query is longer than 3 characters, try fuzzy matching (words like for, too, and etc shouldnt be fuzzy word searched)
   let fuzzyMatches = [];
-  if (exactMatches.length === 0 && query.length > 3) {
-    //console.log("No exact matches found, trying fuzzy matching for:", query);
-    fuzzyMatches = findFuzzyMatches(query);
-    //console.log("Found", fuzzyMatches.length, "fuzzy matches");
+  
+  if (query.length > 3) {
+    fuzzyMatches = findFuzzyMatches(query, maxFuzzyResults, exactMatches);
   }
 
-  // Combine results, prioritizing exact matches
   searchResults = [...exactMatches, ...fuzzyMatches];
 
-  // Show matches
   updateSearchResults(query, exactMatches.length, fuzzyMatches.length);
   updateSearchResultsList(query);
   
@@ -597,14 +601,21 @@ function findExactMatches(query) {
   return Array.from(searchMatches.values());
 }
 
-function findFuzzyMatches(query) {
+function findFuzzyMatches(query, limit = maxFuzzyResults, exactMatches = []) {
   const fuzzyMatches = new Map();
   const queryWords = query.split(/\s+/);
   
+  const exactMatchKeys = new Set(exactMatches.map(match => `${match.segment.start}_${match.segment.text}`));
+  
   cachedTranscript.forEach((segment, cacheIndex) => {
+    const uniqueKey = `${segment.start}_${segment.text}`;
+    
+    if (exactMatchKeys.has(uniqueKey)) {
+      return;
+    }
+    
     const segmentWords = segment.text.toLowerCase().split(/\s+/);
     
-    // Check if any word in the segment is similar to any query word
     let hasFuzzyMatch = false;
     let bestSimilarity = 0;
     let matchedWord = '';
@@ -615,7 +626,6 @@ function findFuzzyMatches(query) {
       for (const segmentWord of segmentWords) {
         const similarity = calculateSimilarity(queryWord, segmentWord);
         
-        // More lenient distance for longer words
         let threshold;
         if (queryWord.length <= 5) {
           threshold = 0.65;
@@ -626,7 +636,6 @@ function findFuzzyMatches(query) {
         }
         
         if (similarity >= threshold) {
-          //console.log(`Fuzzy match found: "${queryWord}" -> "${segmentWord}" (similarity: ${similarity.toFixed(3)})`);
           hasFuzzyMatch = true;
           if (similarity > bestSimilarity) {
             bestSimilarity = similarity;
@@ -642,8 +651,6 @@ function findFuzzyMatches(query) {
       const matchingElement = findSegmentElement(segment);
       
       if (matchingElement) {
-        const uniqueKey = `${segment.start}_${segment.text}`;
-        
         if (!fuzzyMatches.has(uniqueKey)) {
           fuzzyMatches.set(uniqueKey, {
             cacheIndex: cacheIndex,
@@ -658,16 +665,12 @@ function findFuzzyMatches(query) {
     }
   });
 
-  // Sort fuzzy matches by similarity
-  const sortedMatches = Array.from(fuzzyMatches.values())
+  return Array.from(fuzzyMatches.values())
     .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 10); // max 10
-    
-  //console.log("Sorted fuzzy matches:", sortedMatches.map(m => `${m.matchedWord} (${m.similarity.toFixed(3)})`));
-  return sortedMatches;
+    .slice(0, limit);
 }
 
-// Levenshtein distance similarity calculation
+// Damerau-Levenshtein distance similarity calculation
 function calculateSimilarity(str1, str2) {
   const len1 = str1.length;
   const len2 = str2.length;
@@ -676,25 +679,55 @@ function calculateSimilarity(str1, str2) {
   if (len1 === 0) return len2 === 0 ? 1 : 0;
   if (len2 === 0) return 0;
   
-  const matrix = Array(len2 + 1).fill().map(() => Array(len1 + 1).fill(0));
+  const matrix = [];
+  for (let i = 0; i <= len1 + 1; i++) {
+    matrix[i] = new Array(len2 + 2).fill(Infinity);
+  }
   
-  for (let i = 0; i <= len1; i++) matrix[0][i] = i;
-  for (let j = 0; j <= len2; j++) matrix[j][0] = j;
+  matrix[0][0] = 0;
+  for (let i = 0; i <= len1; i++) {
+    matrix[i + 1][0] = Infinity;
+    matrix[i + 1][1] = i;
+  }
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j + 1] = Infinity;
+    matrix[1][j + 1] = j;
+  }
   
-  for (let j = 1; j <= len2; j++) {
-    for (let i = 1; i <= len1; i++) {
-      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      matrix[j][i] = Math.min(
-        matrix[j - 1][i] + 1,
-        matrix[j][i - 1] + 1,
-        matrix[j - 1][i - 1] + cost
+  const charMap = new Map();
+  
+  for (let i = 1; i <= len1; i++) {
+    let lastMatchCol = 0;
+    
+    for (let j = 1; j <= len2; j++) {
+      const char1 = str1[i - 1];
+      const char2 = str2[j - 1];
+      
+      const lastMatchRow = charMap.get(char2) || 0;
+      const cost = char1 === char2 ? 0 : 1;
+      
+      if (char1 === char2) {
+        lastMatchCol = j;
+      }
+      
+      matrix[i + 1][j + 1] = Math.min(
+        // Insertion
+        matrix[i][j + 1] + 1,
+        // Deletion  
+        matrix[i + 1][j] + 1,
+        // Substitution
+        matrix[i][j] + cost,
+        // Transposition
+        matrix[lastMatchRow][lastMatchCol] + (i - lastMatchRow - 1) + 1 + (j - lastMatchCol - 1)
       );
     }
+    
+    charMap.set(str1[i - 1], i);
   }
   
   // Similarity = 1 - normalized distance
   const maxLength = Math.max(len1, len2);
-  const distance = matrix[len2][len1];
+  const distance = matrix[len1 + 1][len2 + 1];
   return 1 - (distance / maxLength);
 }
 
@@ -744,16 +777,12 @@ function updateSearchResultsList(query) {
     if (result.matchType === 'exact') {
       highlightedText = highlightSearchTerm(result.segment.text, query);
     } else {
-      // For fuzzy matches, highlight similar words differently
       highlightedText = highlightFuzzyMatch(result.segment.text, query, result.matchedWord);
     }
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // TODO: FIX FUZZY HIGHLIGHT
-    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    
+
     // Add match type indicator
     const matchIndicator = result.matchType === 'fuzzy' ? 
-      `<span style="color: var(--yt-spec-text-secondary); font-size: 10px;">(similar to "${result.matchedWord || 'unknown'}")</span>` : '';
+      `<span style="color: var(--yt-spec-text-secondary); font-size: 10px;">(similar to "${query || 'unknown'}")</span>` : '';
     
     resultItem.innerHTML = `
       <div style="color: var(--yt-spec-text-secondary); margin-bottom: 2px;">
@@ -788,40 +817,115 @@ function updateSearchResultsList(query) {
 
     resultsList.appendChild(resultItem);
   });
+  const hasFuzzyMatches = searchResults.some(r => r.matchType === 'fuzzy');
+  const exactMatches = searchResults.filter(r => r.matchType === 'exact');
+  // show show similar button even if theres an exact match since someone might have typed built and built does appear in the video but the section they really wanted to get to was build
+  if (query.length > 3) {
+    addShowSimilarButton(resultsList, query);
+  }
 
   updateResultsListSelection();
 }
 
-// Highlight fuzzy matches with different styling
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-function highlightFuzzyMatch(text, query, matchedWord) {
-  const queryWords = query.toLowerCase().split(/\s+/);
-  let highlightedText = text;
-  
-  // If we know the specific matched word, highlight it
-  if (matchedWord) {
-    const regex = new RegExp(`\\b(${escapeRegExp(matchedWord)})\\b`, 'gi');
-    highlightedText = highlightedText.replace(regex, '<span style="background-color: orange; color: white; padding: 0 2px; border-radius: 2px;">$1</span>');
-  } else {
-    // Fallback: check similarity for each word
-    queryWords.forEach(queryWord => {
-      if (queryWord.length < 4) return;
-      
-      const words = text.toLowerCase().split(/\s+/);
-      const originalWords = text.split(/\s+/);
-      
-      words.forEach((word, index) => {
-        const similarity = calculateSimilarity(queryWord, word);
-        if (similarity >= 0.65) {
-          const originalWord = originalWords[index];
-          const fuzzyHighlight = `<span style="background-color: orange; color: white; padding: 0 2px; border-radius: 2px;">${originalWord}</span>`;
-          highlightedText = highlightedText.replace(new RegExp(`\\b${escapeRegExp(originalWord)}\\b`, 'gi'), fuzzyHighlight);
-        }
-      });
-    });
+function addShowSimilarButton(resultsList, query) {
+  if (showSimilarButton) {
+    showSimilarButton.remove();
   }
   
-  return highlightedText;
+  const currentFuzzyCount = searchResults.filter(r => r.matchType === 'fuzzy').length;
+  const buttonText = currentFuzzyCount > 0 ? 'Show 5 More Similar' : 'Find Similar Results';
+  
+  showSimilarButton = document.createElement('button');
+  showSimilarButton.textContent = buttonText;
+  showSimilarButton.style.cssText = `
+    width: 100%;
+    padding: 8px 12px;
+    margin-top: 4px;
+    border: 1px solid var(--yt-spec-10-percent-layer);
+    border-radius: 4px;
+    background: var(--yt-spec-base-background);
+    color: var(--yt-spec-text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s;
+  `;
+  
+  showSimilarButton.addEventListener('mouseenter', () => {
+    showSimilarButton.style.backgroundColor = 'var(--yt-spec-10-percent-layer)';
+  });
+  
+  showSimilarButton.addEventListener('mouseleave', () => {
+    showSimilarButton.style.backgroundColor = '';
+  });
+  
+  showSimilarButton.addEventListener('click', () => {
+    loadMoreSimilarResults(query);
+  });
+  
+  resultsList.appendChild(showSimilarButton);
+}
+
+function loadMoreSimilarResults(query) {
+  maxFuzzyResults += 5;
+  
+  // exact then fuzzy
+  const exactMatches = searchResults.filter(r => r.matchType === 'exact');
+  const allFuzzyMatches = findFuzzyMatches(query, maxFuzzyResults, exactMatches);
+  
+  searchResults = [...exactMatches, ...allFuzzyMatches];
+  
+  // Update UI
+  const exactCount = exactMatches.length;
+  const fuzzyCount = allFuzzyMatches.length;
+  
+  updateSearchResults(query, exactCount, fuzzyCount);
+  updateSearchResultsList(query);
+  
+  // Update button text
+  if (showSimilarButton) {
+    if (allFuzzyMatches.length === 0 || fuzzyCount < maxFuzzyResults - 5) {
+      showSimilarButton.textContent = 'No more similar results';
+      showSimilarButton.style.color = 'var(--yt-spec-text-disabled)';
+      showSimilarButton.style.cursor = 'default';
+      showSimilarButton.onclick = null;
+    } else {
+      showSimilarButton.textContent = 'Show 5 More Similar';
+    }
+  }
+}
+
+function highlightFuzzyMatch(text, query, matchedWord) {
+  if (!matchedWord) {
+    // Fallback: try to find which word actually matched
+    const queryWords = query.toLowerCase().split(/\s+/);
+    const textWords = text.toLowerCase().split(/\s+/);
+    const originalWords = text.split(/\s+/);
+    
+    for (let i = 0; i < queryWords.length; i++) {
+      const queryWord = queryWords[i];
+      if (queryWord.length < 4) continue;
+      
+      for (let j = 0; j < textWords.length; j++) {
+        const textWord = textWords[j];
+        const similarity = calculateSimilarity(queryWord, textWord);
+        
+        if (similarity >= 0.65) {
+          matchedWord = originalWords[j];
+          break;
+        }
+      }
+      if (matchedWord) break;
+    }
+  }
+  
+  if (matchedWord) {
+    const cleanMatchedWord = matchedWord.replace(/[^\w]/g, '');
+    const regex = new RegExp(`\\b(${escapeRegExp(cleanMatchedWord)}[^\\s]*)\\b`, 'gi');
+    
+    return text.replace(regex, '<span style="background-color: orange; color: white; padding: 0 2px; border-radius: 2px;">$1</span>');
+  }
+  
+  return text;
 }
 
 // Element matching using timestamp and text content
@@ -948,74 +1052,6 @@ function checkAndInjectSearchBox() {
       }
     }, 100);
   }
-}
-
-function updateSearchResultsList(query) {
-  const resultsList = document.getElementById('search-results-list');
-  if (!resultsList) return;
-
-  // Clear previous
-  resultsList.innerHTML = '';
-
-  if (searchResults.length === 0) {
-    resultsList.style.display = 'none';
-    return;
-  }
-
-  resultsList.style.display = 'block';
-
-  // Create list of results
-  searchResults.forEach((result, index) => {
-    const resultItem = document.createElement('div');
-    resultItem.style.cssText = `
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--yt-spec-10-percent-layer);
-      cursor: pointer;
-      font-size: 12px;
-      line-height: 1.4;
-      transition: background-color 0.2s;
-    `;
-
-    const timestamp = formatTime(result.segment.start);
-    
-    const highlightedText = highlightSearchTerm(result.segment.text, query);
-    
-    resultItem.innerHTML = `
-      <div style="color: var(--yt-spec-text-secondary); margin-bottom: 2px;">
-        ${timestamp}
-      </div>
-      <div style="color: var(--yt-spec-text-primary);">
-        ${highlightedText}
-      </div>
-    `;
-
-    resultItem.addEventListener('mouseenter', () => {
-      resultItem.style.backgroundColor = 'var(--yt-spec-10-percent-layer)';
-    });
-    
-    resultItem.addEventListener('mouseleave', () => {
-      if (index !== currentSearchIndex) {
-        resultItem.style.backgroundColor = '';
-      }
-    });
-
-    resultItem.addEventListener('click', () => {
-      currentSearchIndex = index;
-      highlightCurrentResult();
-      updateSearchResults();
-      updateResultsListSelection();
-      
-      // Link to start of segment (timestamp)
-      const video = document.querySelector('video');
-      if (video) {
-        video.currentTime = result.segment.start;
-      }
-    });
-
-    resultsList.appendChild(resultItem);
-  });
-
-  updateResultsListSelection();
 }
 
 // Highlight searched word
@@ -1284,6 +1320,8 @@ function clearSearch() {
   currentSearchIndex = 0;
   clearHighlights();
   updateSearchResults();
+  maxFuzzyResults = 10;
+  showSimilarButton = null;
   
   // Hide results list
   const resultsList = document.getElementById('search-results-list');

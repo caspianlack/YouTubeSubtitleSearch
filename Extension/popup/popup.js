@@ -135,7 +135,17 @@ async function openTranscript() {
     }
   } catch (error) {
     console.error('Open transcript error:', error);
-    showStatus('Could not open transcript. Try refreshing the page and wait a moment before trying again.', 'error');
+    showStatus('Could not open transcript. Refreshing page...', 'error');
+    
+    // Set flag to show success message after refresh
+    localStorage.setItem('transcriptRefreshPending', 'true'); 
+    //TODO: update error message to page refreshed after page refreshes if needed to refresh page to open transcript (new tab)
+    
+    setTimeout(() => {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.reload(tabs[0].id);
+      });
+    }, 1500);
   }
 }
 

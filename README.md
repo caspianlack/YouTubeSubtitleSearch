@@ -57,9 +57,9 @@ It works even with auto-generated captions, so you can always find the exact par
 - Scroll through the results and clickt to where you want to jump into.
 
 # Without Extension
-![Alt text](Extension/assets/demo/withoutextension.png)
+![Alt text](demo/withoutextension.png)
 # With Extension
-![Alt text](Extension/assets/demo/withextension.png)
+![Alt text](demo/withextension.png)
 
 ## Troubleshooting 🐛
 
