@@ -4,11 +4,24 @@
 
 THE Chrome extension for finding keywords or phrases in YouTube videos, allowing you to jump in exactly where you want quickly, with seamless integration into YouTube's existing UI.
 
+## Why this extension?
+
+YouTube does provide a transcript feature, and on some videos you may see a built-in search bar.  
+However, this is not available on every video and can be unreliable:
+
+- The search bar does not always appear.
+- Results may miss words if they are spelled slightly differently (e.g., from auto-generated captions).
+- Availability depends on YouTube's UI experiments, region and transcript data.
+
+**Integrated YouTube Transcript Search** solves these issues by providing a consistent, reliable way to search transcripts across all videos.  
+It works even with auto-generated captions, so you can always find the exact part of the video you’re looking for.
+
 ## Features ✨
 
 - 🔍 **Transcript Search**: Download and search video transcripts for key words or phrases.
 - ⏩ **Smart Navigation**: Jump directly to any words/phrases in the video.
 - 📊 **Frequency Insights**: See how often words appear in a video.
+- ⭐ **Fuzzy Match**: Search supports both exact matches and fuzzy matching (helpful for typos or near matches)
 - 🎨 **Clean UI Integration**: Minimal popup UI with transcript search integrated into YouTube's interface.
 - ⚡ **High Performance**: Lightning-fast speeds for videos under an hour, with moderate performance for 10+ hour videos.
 
@@ -42,6 +55,11 @@ THE Chrome extension for finding keywords or phrases in YouTube videos, allowing
 - The extension automatically detects YouTube videos; opens up the YouTube Transcript, reads the DOM element containing the text and timestamps.
 - Search functionality highlights matching terms and provides quick navigation using first exact contains matches and falls back to use Levenshtein distance similarity calculations to find similar words from either transcript error or user input error.
 - Scroll through the results and clickt to where you want to jump into.
+
+# Without Extension
+![Alt text](Extension/assets/demo/withoutextension.png)
+# With Extension
+![Alt text](Extension/assets/demo/withextension.png)
 
 ## Troubleshooting 🐛
 
