@@ -47,13 +47,13 @@ It works even with auto-generated captions, so you can always find the exact par
 2. The **video transcript should appear on the left** where you can search for keywords
 3. **If the transcript search doesn't appear:**
 - The extension automatically detects YouTube videos, opens the YouTube transcript, and reads the DOM element containing the text and timestamps
-- Search functionality highlights matching terms and provides quick navigation using first exact contains matches, then falls back to Levenshtein distance similarity calculations to find similar words (handling both transcript errors and user input errors).
+- Search functionality highlights matching terms and provides quick navigation using first exact contains matches, then falls back to Damerau-Levenshtein distance similarity calculations to find similar words (handling both transcript errors and user input errors).
 - Scroll through the results and click to jump to where you want to go in the video.
 
 ## How It Works 🔧
 
 - The extension automatically detects YouTube videos; opens up the YouTube Transcript, reads the DOM element containing the text and timestamps.
-- Search functionality highlights matching terms and provides quick navigation using first exact contains matches and falls back to use Levenshtein distance similarity calculations to find similar words from either transcript error or user input error.
+- Search functionality highlights matching terms and provides quick navigation using first exact contains matches and falls back to use Damerau-Levenshtein distance similarity calculations to find similar words from either transcript error or user input error.
 - Scroll through the results and clickt to where you want to jump into.
 
 # Without Extension
